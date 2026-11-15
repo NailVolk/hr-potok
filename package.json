@@ -1,0 +1,24 @@
+{
+  "name": "hr-potok",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "emulators": "firebase emulators:start --project demo-hr-potok --only auth,database,functions --import=./.emulator-data --export-on-exit=./.emulator-data",
+    "emulators:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop-emulators.ps1",
+    "verify:emulators": "firebase emulators:exec --project demo-hr-potok --only auth,database,functions \"node scripts/verify-emulators.mjs\"",
+    "deploy:rules": "firebase deploy --only database --project hr-potok",
+    "deploy:functions": "firebase deploy --only functions --project hr-potok"
+  },
+  "dependencies": {
+    "firebase": "^12.5.0",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "firebase-tools": "^14.22.0",
+    "vite": "^7.1.12"
+  }
+}

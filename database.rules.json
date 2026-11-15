@@ -1,0 +1,43 @@
+{
+  "rules": {
+    "participants": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.hasChildren(['name'])",
+        "name": {
+          ".validate": "newData.isString() && newData.val().length >= 2 && newData.val().length <= 24"
+        },
+        "$other": { ".validate": false }
+      }
+    },
+    "admins": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
+      }
+    },
+    "game": {
+      "current": {
+        ".read": "auth != null",
+        ".write": false
+      },
+      "results": {
+        "$roundId": {
+          ".read": "auth != null && root.child('game/current/phase').val() === 'revealed' && root.child('game/current/roundId').val() === $roundId",
+          ".write": false
+        }
+      },
+      "leaderboard": {
+        ".read": "auth != null",
+        ".write": false
+      }
+    },
+    "rounds": {
+      "$roundId": {
+        ".read": false,
+        ".write": false
+      }
+    }
+  }
+}

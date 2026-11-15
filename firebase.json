@@ -1,0 +1,13 @@
+{
+  "database": {
+    "rules": "database.rules.json"
+  },
+  "functions": { "source": "functions" },
+  "emulators": {
+    "auth": { "port": 29099 },
+    "database": { "port": 29001 },
+    "functions": { "port": 25001 },
+    "ui": { "enabled": true, "port": 24000 },
+    "singleProjectMode": true
+  }
+}
