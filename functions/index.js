@@ -1,6 +1,9 @@
 import { initializeApp } from 'firebase-admin/app';
 import { getDatabase } from 'firebase-admin/database';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { defineSecret } from 'firebase-functions/params';
+
+const hostAccessCode = defineSecret('HOST_ACCESS_CODE');
 
 const projectId = process.env.GCLOUD_PROJECT || 'hr-potok';
 const databaseURL = process.env.FUNCTIONS_EMULATOR === 'true'
@@ -81,11 +84,10 @@ export const checkAdmin = onCall({ region }, async (request) => {
   return { isAdmin: snapshot.val() === true };
 });
 
-export const manageGame = onCall({ region }, async (request) => {
+export const manageGame = onCall({ region, secrets: [hostAccessCode] }, async (request) => {
   const localHostMode = process.env.FUNCTIONS_EMULATOR === 'true' && projectId === 'demo-hr-potok';
-  if (!localHostMode) {
-    const uid = requireSignedIn(request);
-    await requireAdmin(uid);
+  if (!localHostMode && request.data?.hostCode !== hostAccessCode.value()) {
+    throw new HttpsError('permission-denied', 'Неверный код ведущего. Проверьте его и попробуйте снова.');
   }
   const action = request.data?.action;
 

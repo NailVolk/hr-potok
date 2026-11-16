@@ -1,6 +1,6 @@
 import './style.css';
 import { configured, missingFirebaseFields, auth, database, functions, participantAuth, participantDatabase, participantFunctions } from './firebase.js';
-import { onAuthStateChanged, signInAnonymously, signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import { onValue, ref, set } from 'firebase/database';
 import { httpsCallable } from 'firebase/functions';
 import QRCode from 'qrcode';
@@ -90,46 +90,29 @@ function participantPage() {
 }
 
 function adminPage() {
-  shell(`<section class="card admin"><p class="eyebrow">ПАНЕЛЬ ВЕДУЩЕГО</p><h1>Управление игрой</h1><div id="admin-content">Проверяем вход…</div></section>`);
+  shell(`<section class="card admin"><p class="eyebrow">ПАНЕЛЬ ВЕДУЩЕГО</p><h1>Управление игрой</h1><div id="admin-content"></div></section>`);
   const content = document.querySelector('#admin-content');
-  if (import.meta.env.VITE_USE_EMULATORS === 'true') {
-    renderAdminControls(content, false);
+  const localMode = import.meta.env.VITE_USE_EMULATORS === 'true';
+  const savedCode = sessionStorage.getItem('hr-potok-host-code') || '';
+  if (localMode) {
+    renderAdminControls(content, () => httpsCallable(functions, 'manageGame'));
     return;
   }
-  onAuthStateChanged(auth, (user) => {
-    if (!user || user.isAnonymous) {
-      const anonymousNote = user?.isAnonymous
-        ? '<p class="notice">Сейчас используется анонимный аккаунт участника. Для панели ведущего войдите постоянным тестовым аккаунтом по email и паролю из вкладки Authentication эмулятора.</p>'
-        : '';
-      content.innerHTML = `${anonymousNote}<form id="login" class="stack"><label>Email ведущего<input name="email" type="email" autocomplete="username" required></label><label>Пароль<input name="password" type="password" autocomplete="current-password" required></label><button class="button primary">Войти</button><p class="muted">Для локальной проверки используйте один и тот же тестовый email и пароль. Не создавайте нового пользователя при каждом входе.</p></form>`;
-      content.querySelector('#login').addEventListener('submit', async (event) => {
-        event.preventDefault();
-        const form = new FormData(event.currentTarget);
-        try { await signInWithEmailAndPassword(auth, form.get('email'), form.get('password')); }
-        catch (error) { content.insertAdjacentHTML('beforeend', `<p class="error">${esc(errorText(error))}</p>`); }
-      });
-      return;
-    }
-    content.innerHTML = '<p class="muted">Проверяем доступ ведущего…</p>';
-    httpsCallable(functions, 'checkAdmin')().then(({ data }) => {
-      if (data?.isAdmin !== true) {
-        const where = import.meta.env.VITE_USE_EMULATORS === 'true'
-          ? 'Откройте локальный Emulator Suite по адресу <code>http://127.0.0.1:24000/database</code> и выберите базу <code>demo-hr-potok-default-rtdb</code>.'
-          : 'Откройте Realtime Database в Firebase Console.';
-        content.innerHTML = `<p class="error">Аккаунт вошёл, но пока не добавлен в список ведущих базы данных.</p><p>${where} Добавьте по пути <code>admins/${esc(user.uid)}</code> значение <code>true</code>. UID — это идентификатор этого аккаунта, не пароль.</p><button id="logout" class="button secondary">Выйти</button>`;
-        content.querySelector('#logout').onclick = () => signOut(auth);
-        return;
-      }
-      renderAdminControls(content, true);
-    }).catch((error) => { content.innerHTML = `<p class="error">Не удалось проверить права ведущего: ${esc(errorText(error))}</p>`; });
+  content.innerHTML = `<form id="host-code-form" class="stack"><p class="muted">Введите код ведущего, который вы настроили для игры. Аккаунт Firebase не нужен.</p><label>Код ведущего<input name="hostCode" type="password" autocomplete="current-password" required></label><button class="button primary">Открыть панель</button><p id="host-code-error" class="error" aria-live="polite"></p></form>`;
+  content.querySelector('[name="hostCode"]').value = savedCode;
+  content.querySelector('#host-code-form').addEventListener('submit', (event) => {
+    event.preventDefault();
+    const code = String(new FormData(event.currentTarget).get('hostCode') || '').trim();
+    if (!code) return;
+    sessionStorage.setItem('hr-potok-host-code', code);
+    renderAdminControls(content, () => (payload) => httpsCallable(functions, 'manageGame')({ ...payload, hostCode: code }));
   });
 }
 
-function renderAdminControls(content, showLogout) {
-  content.innerHTML = `<form id="round-form" class="stack"><label>Вопрос<textarea name="question" rows="3" minlength="5" maxlength="240" required placeholder="Например, что чаще всего помогает команде пережить понедельник?"></textarea></label><label>Варианты ответа <span class="muted">(каждый с новой строки, от 2 до 6)</span><textarea name="options" rows="5" required placeholder="Кофе\nОбщий чат\nПланёрка"></textarea></label><div class="actions"><button type="submit" class="button primary">Начать голосование</button><button type="button" id="save-question" class="button secondary">Сохранить вопрос</button><button type="button" id="reveal" class="button secondary">Показать результаты</button><button type="button" id="reset" class="button secondary">В лобби</button>${showLogout ? '<button type="button" id="logout" class="button quiet">Выйти</button>' : ''}</div></form><section class="question-bank"><h2>Подготовленные вопросы</h2><p class="muted">Список хранится в этом браузере на этом компьютере. Сохраните вопросы заранее, а во время игры нажимайте «Запустить».</p><div id="question-bank-list"></div></section><p id="admin-status" class="muted">Участник: <code>/participant</code> · Экран: <code>/screen</code></p>`;
-  if (showLogout) content.querySelector('#logout').onclick = () => signOut(auth);
+function renderAdminControls(content, makeCall) {
+  content.innerHTML = `<form id="round-form" class="stack"><label>Вопрос<textarea name="question" rows="3" minlength="5" maxlength="240" required placeholder="Например, что чаще всего помогает команде пережить понедельник?"></textarea></label><label>Варианты ответа <span class="muted">(каждый с новой строки, от 2 до 6)</span><textarea name="options" rows="5" required placeholder="Кофе\nОбщий чат\nПланёрка"></textarea></label><div class="actions"><button type="submit" class="button primary">Начать голосование</button><button type="button" id="save-question" class="button secondary">Сохранить вопрос</button><button type="button" id="reveal" class="button secondary">Показать результаты</button><button type="button" id="reset" class="button secondary">В лобби</button></div></form><section class="question-bank"><h2>Подготовленные вопросы</h2><p class="muted">Список хранится в этом браузере на этом компьютере. Сохраните вопросы заранее, а во время игры нажимайте «Запустить».</p><div id="question-bank-list"></div></section><p id="admin-status" class="muted">Участник: <code>/participant</code> · Экран: <code>/screen</code></p>`;
   const status = content.querySelector('#admin-status');
-  const call = httpsCallable(functions, 'manageGame');
+  const call = makeCall();
   const formElement = content.querySelector('#round-form');
   const bankElement = content.querySelector('#question-bank-list');
   const bankStorageKey = 'hr-potok-question-bank-v1';
